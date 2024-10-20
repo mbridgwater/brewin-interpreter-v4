@@ -7,10 +7,11 @@ There are four stages to the project. This folder contains the necessary bootstr
 - `ply/lex.py`, `ply/yacc.py`, `brewlex.py`, `brewparse.py`, responsible for taking in a string representing a Brewin program and outputting an AST (parser logic)
 - `elements.py`, defines the return type of the parser
 - `intbase.py`, the base class and enum definitions for the interpreter
+- released solutions to previous stages of the project when applicable
 
 Some notes on your submission
 
-1. You **must have a top-level, versioned `interpreterv1.py` file** that **exports the `Interpreter` class**. If not, **your code will not run on our autograder**.
+1. You **must have a top-level, versioned `interpretervX.py` file** (where X is the current project number) that **exports the `Interpreter` class**. If not, **your code will not run on our autograder**.
 2. You may also submit one or more additional `.py` modules that your interpreter uses, if you decide to break up your solution into multiple `.py` files.
 3. You should have a readme.txt outlining known bugs in your interpreter or "all good!" if there are none.
 4. You should maintain a copy of your local git history and commit to it regularly as you work. Although this is not required for submission, we reserve the right to ask you to submit this at any time if we suspect foul play.
