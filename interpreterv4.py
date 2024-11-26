@@ -6,7 +6,23 @@ from enum import Enum
 from brewparse import parse_program
 from env_v4 import EnvironmentManager
 from intbase import InterpreterBase, ErrorType
-from type_valuev4 import Type, Value, create_value, get_printable
+from type_valuev4 import (
+    Type,
+    Value,
+    Thunk,
+    create_value,
+    get_printable,
+    get_printable_debug,
+)
+
+
+import os  # remove/add as needed
+
+from debug_utils import (
+    debug_logger,
+    debug,
+    _understand_ast,
+)
 
 
 class ExecStatus(Enum):
@@ -30,12 +46,14 @@ class Interpreter(InterpreterBase):
     # run a program that's provided in a string
     # usese the provided Parser found in brewparse.py to parse the program
     # into an abstract syntax tree (ast)
+    @debug_logger
     def run(self, program):
         ast = parse_program(program)
         self.__set_up_function_table(ast)
         self.env = EnvironmentManager()
         self.__call_func_aux("main", [])
 
+    @debug_logger
     def __set_up_function_table(self, ast):
         self.func_name_to_ast = {}
         for func_def in ast.get("functions"):
@@ -45,6 +63,7 @@ class Interpreter(InterpreterBase):
                 self.func_name_to_ast[func_name] = {}
             self.func_name_to_ast[func_name][num_params] = func_def
 
+    @debug_logger
     def __get_func_by_name(self, name, num_params):
         if name not in self.func_name_to_ast:
             super().error(ErrorType.NAME_ERROR, f"Function {name} not found")
@@ -56,12 +75,13 @@ class Interpreter(InterpreterBase):
             )
         return candidate_funcs[num_params]
 
-    def __run_statements(self, statements):
+    @debug_logger
+    def __run_statements(self, statements, env_to_search=None):
         self.env.push_block()
         for statement in statements:
             if self.trace_output:
                 print(statement)
-            status, return_val = self.__run_statement(statement)
+            status, return_val = self.__run_statement(statement, env_to_search)
             if status == ExecStatus.RETURN:
                 self.env.pop_block()
                 return (status, return_val)
@@ -69,7 +89,8 @@ class Interpreter(InterpreterBase):
         self.env.pop_block()
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
-    def __run_statement(self, statement):
+    @debug_logger
+    def __run_statement(self, statement, env_to_search=None):
         status = ExecStatus.CONTINUE
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
@@ -81,22 +102,24 @@ class Interpreter(InterpreterBase):
         elif statement.elem_type == InterpreterBase.RETURN_NODE:
             status, return_val = self.__do_return(statement)
         elif statement.elem_type == Interpreter.IF_NODE:
-            status, return_val = self.__do_if(statement)
+            status, return_val = self.__do_if(statement, env_to_search)
         elif statement.elem_type == Interpreter.FOR_NODE:
-            status, return_val = self.__do_for(statement)
+            status, return_val = self.__do_for(statement, env_to_search)
 
         return (status, return_val)
 
-    def __call_func(self, call_node):
+    @debug_logger
+    def __call_func(self, call_node, env_to_search=None):
         func_name = call_node.get("name")
         actual_args = call_node.get("args")
-        return self.__call_func_aux(func_name, actual_args)
+        return self.__call_func_aux(func_name, actual_args, env_to_search)
 
-    def __call_func_aux(self, func_name, actual_args):
+    @debug_logger
+    def __call_func_aux(self, func_name, actual_args, env_to_search=None):
         if func_name == "print":
-            return self.__call_print(actual_args)
+            return self.__call_print(actual_args, env_to_search)
         if func_name == "inputi" or func_name == "inputs":
-            return self.__call_input(func_name, actual_args)
+            return self.__call_input(func_name, actual_args, env_to_search)
 
         func_ast = self.__get_func_by_name(func_name, len(actual_args))
         formal_args = func_ast.get("args")
@@ -109,7 +132,7 @@ class Interpreter(InterpreterBase):
         # first evaluate all of the actual parameters and associate them with the formal parameter names
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
-            result = copy.copy(self.__eval_expr(actual_ast))
+            result = copy.copy(self.__eval_expr(actual_ast, env_to_search))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
@@ -118,21 +141,25 @@ class Interpreter(InterpreterBase):
         # and add the formal arguments to the activation record
         for arg_name, value in args.items():
             self.env.create(arg_name, value)
-        _, return_val = self.__run_statements(func_ast.get("statements"))
+        _, return_val = self.__run_statements(
+            func_ast.get("statements"), env_to_search
+        )  # ??? should env_to_search go here?
         self.env.pop_func()
         return return_val
 
-    def __call_print(self, args):
+    @debug_logger
+    def __call_print(self, args, env_to_search=None):
         output = ""
         for arg in args:
-            result = self.__eval_expr(arg)  # result is a Value object
+            result = self.__eval_expr(arg, env_to_search)  # result is a Value object
             output = output + get_printable(result)
         super().output(output)
         return Interpreter.NIL_VALUE
 
-    def __call_input(self, name, args):
+    @debug_logger
+    def __call_input(self, name, args, env_to_search=None):
         if args is not None and len(args) == 1:
-            result = self.__eval_expr(args[0])
+            result = self.__eval_expr(args[0], env_to_search)
             super().output(get_printable(result))
         elif args is not None and len(args) > 1:
             super().error(
@@ -144,16 +171,21 @@ class Interpreter(InterpreterBase):
         if name == "inputs":
             return Value(Type.STRING, inp)
 
+    @debug_logger
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
         # ! need to change -> don't call __eval_expr when assigning
         # ! set to a thunk object
-        value_obj = self.__eval_expr(assign_ast.get("expression"))
+        expr_ast = assign_ast.get("expression")
+        # value_obj = self.__eval_expr(assign_ast.get("expression"))
+        # if not self.env.set(var_name, value_obj):
+        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
             )
 
+    @debug_logger
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
         if not self.env.create(var_name, Interpreter.NIL_VALUE):
@@ -161,7 +193,8 @@ class Interpreter(InterpreterBase):
                 ErrorType.NAME_ERROR, f"Duplicate definition for variable {var_name}"
             )
 
-    def __eval_expr(self, expr_ast):
+    @debug_logger
+    def __eval_expr(self, expr_ast, env_to_search=None):
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
             return Interpreter.NIL_VALUE
         if expr_ast.elem_type == InterpreterBase.INT_NODE:
@@ -172,22 +205,35 @@ class Interpreter(InterpreterBase):
             return Value(Type.BOOL, expr_ast.get("val"))
         if expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
-            val = self.env.get(var_name)
+            # searches appropriate environment (either global or captured one)
+            val = self.env.get(var_name, env_to_search)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
+            debug(get_printable_debug(val))
+            if val.type() == Type.THUNK:
+                debug(
+                    f"AFTER push_func: self.env.get_printable_env(): {self.env.get_printable_env()}"
+                )
+                value_obj = self.__eval_expr(
+                    val.value().expr(), val.value().env_snapshot()
+                )
+                val.set_value_type(value_obj.value(), value_obj.type())
             return val
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
             return self.__call_func(expr_ast)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
-            return self.__eval_op(expr_ast)
+            return self.__eval_op(expr_ast, env_to_search)
         if expr_ast.elem_type == Interpreter.NEG_NODE:
-            return self.__eval_unary(expr_ast, Type.INT, lambda x: -1 * x)
+            return self.__eval_unary(
+                expr_ast, Type.INT, lambda x: -1 * x, env_to_search
+            )
         if expr_ast.elem_type == Interpreter.NOT_NODE:
             return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
 
-    def __eval_op(self, arith_ast):
-        left_value_obj = self.__eval_expr(arith_ast.get("op1"))
-        right_value_obj = self.__eval_expr(arith_ast.get("op2"))
+    @debug_logger
+    def __eval_op(self, arith_ast, env_to_search):
+        left_value_obj = self.__eval_expr(arith_ast.get("op1"), env_to_search)
+        right_value_obj = self.__eval_expr(arith_ast.get("op2"), env_to_search)
         if not self.__compatible_types(
             arith_ast.elem_type, left_value_obj, right_value_obj
         ):
@@ -203,14 +249,16 @@ class Interpreter(InterpreterBase):
         f = self.op_to_lambda[left_value_obj.type()][arith_ast.elem_type]
         return f(left_value_obj, right_value_obj)
 
+    @debug_logger
     def __compatible_types(self, oper, obj1, obj2):
         # DOCUMENT: allow comparisons ==/!= of anything against anything
         if oper in ["==", "!="]:
             return True
         return obj1.type() == obj2.type()
 
-    def __eval_unary(self, arith_ast, t, f):
-        value_obj = self.__eval_expr(arith_ast.get("op1"))
+    @debug_logger
+    def __eval_unary(self, arith_ast, t, f, env_to_search):
+        value_obj = self.__eval_expr(arith_ast.get("op1"), env_to_search)
         if value_obj.type() != t:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -218,6 +266,7 @@ class Interpreter(InterpreterBase):
             )
         return Value(t, f(value_obj.value()))
 
+    @debug_logger
     def __setup_ops(self):
         self.op_to_lambda = {}
         # set up operations on integers
@@ -287,9 +336,10 @@ class Interpreter(InterpreterBase):
             Type.BOOL, x.type() != y.type() or x.value() != y.value()
         )
 
-    def __do_if(self, if_ast):
+    @debug_logger
+    def __do_if(self, if_ast, env_to_search=None):
         cond_ast = if_ast.get("condition")
-        result = self.__eval_expr(cond_ast)
+        result = self.__eval_expr(cond_ast, env_to_search)
         if result.type() != Type.BOOL:
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -297,25 +347,34 @@ class Interpreter(InterpreterBase):
             )
         if result.value():
             statements = if_ast.get("statements")
-            status, return_val = self.__run_statements(statements)
+            status, return_val = self.__run_statements(
+                statements, env_to_search
+            )  # ??? does env_to_search go here?
             return (status, return_val)
         else:
             else_statements = if_ast.get("else_statements")
             if else_statements is not None:
-                status, return_val = self.__run_statements(else_statements)
+                status, return_val = self.__run_statements(
+                    else_statements, env_to_search  # ??? does env_to_search go here?
+                )
                 return (status, return_val)
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
-    def __do_for(self, for_ast):
+    @debug_logger
+    def __do_for(self, for_ast, env_to_search=None):
         init_ast = for_ast.get("init")
         cond_ast = for_ast.get("condition")
         update_ast = for_ast.get("update")
 
-        self.__run_statement(init_ast)  # initialize counter variable
+        self.__run_statement(
+            init_ast, env_to_search
+        )  # ??? does env_to_search go here? # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
         while run_for.value():
-            run_for = self.__eval_expr(cond_ast)  # check for-loop condition
+            run_for = self.__eval_expr(
+                cond_ast, env_to_search
+            )  # check for-loop condition
             if run_for.type() != Type.BOOL:
                 super().error(
                     ErrorType.TYPE_ERROR,
@@ -323,13 +382,18 @@ class Interpreter(InterpreterBase):
                 )
             if run_for.value():
                 statements = for_ast.get("statements")
-                status, return_val = self.__run_statements(statements)
+                status, return_val = self.__run_statements(
+                    statements, env_to_search
+                )  # ??? does env_to_search go here?
                 if status == ExecStatus.RETURN:
                     return status, return_val
-                self.__run_statement(update_ast)  # update counter variable
+                self.__run_statement(
+                    update_ast, env_to_search  # ??? does env_to_search go here?
+                )  # update counter variable
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
+    @debug_logger
     def __do_return(self, return_ast):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
@@ -338,25 +402,25 @@ class Interpreter(InterpreterBase):
         return (ExecStatus.RETURN, value_obj)
 
 
-# if __name__ == "__main__":
-#     interpreter = Interpreter()
+if __name__ == "__main__":
+    interpreter = Interpreter()
 
-#     directory = "tests/v3/tests/run_these_now"
-#     # directory = "tests/v3/200-test/tests"
-#     # directory = "tests/v3/tests/spec_tests"
-#     # directory = "tests/v3/tests/passed"
-#     # directory = "tests/v3/tests/failed"
-#     # directory = "tests/v3/tests/tests_from_campuswire/tests"
-#     # directory = "tests/v3/intended_errors/failed"
-#     # directory = "tests/v3/intended_errors/run_these_now"
+    directory = "tests/tests/run_these_now"
+    # directory = "tests/v3/200-test/tests"
+    # directory = "tests/v3/tests/spec_tests"
+    # directory = "tests/v3/tests/passed"
+    # directory = "tests/v3/tests/failed"
+    # directory = "tests/v3/tests/tests_from_campuswire/tests"
+    # directory = "tests/v3/intended_errors/failed"
+    # directory = "tests/v3/intended_errors/run_these_now"
 
-#     # Loop through all files in the specified directory
-#     for filename in os.listdir(directory):
-#         file_path = os.path.join(directory, filename)
-#         if os.path.isfile(file_path):
-#             print(f"Processing file: {filename}")
-#             with open(file_path, "r") as file:
-#                 content = file.read()
-#                 # Run the interpreter on the file content
-#                 interpreter.run(content)
-#             print()
+    # Loop through all files in the specified directory
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        if os.path.isfile(file_path):
+            print(f"Processing file: {filename}")
+            with open(file_path, "r") as file:
+                content = file.read()
+                # Run the interpreter on the file content
+                interpreter.run(content)
+            print()
