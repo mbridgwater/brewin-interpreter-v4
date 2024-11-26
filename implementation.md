@@ -49,6 +49,8 @@
     - raise     // for raising errors
     - if and for conditions
 - All other expressions should not be eagerly evaluated
+- Function calls, including calls to inputi() and inputs(), within expressions are also evaluated lazily unless they are in an eager evaluation context.
+    - This should be handled by making __eval_expr lazy for assignments (so when we assign, we do not call __eval_expr) but not making __call_func itself lazy (it runs as soon as called)
 
 ### NOTE FOR LAZY EVAL
 - Only really need to change assign to not call eval_expr unless in the case of an eager evaluation
