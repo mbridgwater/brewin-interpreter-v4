@@ -7,11 +7,14 @@ class Type:
     BOOL = "bool"
     STRING = "string"
     NIL = "nil"
+    THUNK = "thunk"
 
 
 # Represents a value, which has a type and its value
 class Value:
     def __init__(self, type, value=None):
+        # maybe have a thunk object. Set type to thunk and value to the thunk object when needed
+        # consider capturing the whole environment
         self.t = type
         self.v = value
 

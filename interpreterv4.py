@@ -4,9 +4,9 @@ import copy
 from enum import Enum
 
 from brewparse import parse_program
-from env_v2 import EnvironmentManager
+from env_v4 import EnvironmentManager
 from intbase import InterpreterBase, ErrorType
-from type_valuev2 import Type, Value, create_value, get_printable
+from type_valuev4 import Type, Value, create_value, get_printable
 
 
 class ExecStatus(Enum):
@@ -86,7 +86,7 @@ class Interpreter(InterpreterBase):
             status, return_val = self.__do_for(statement)
 
         return (status, return_val)
-    
+
     def __call_func(self, call_node):
         func_name = call_node.get("name")
         actual_args = call_node.get("args")
@@ -113,11 +113,11 @@ class Interpreter(InterpreterBase):
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
-        # then create the new activation record 
+        # then create the new activation record
         self.env.push_func()
         # and add the formal arguments to the activation record
         for arg_name, value in args.items():
-          self.env.create(arg_name, value)
+            self.env.create(arg_name, value)
         _, return_val = self.__run_statements(func_ast.get("statements"))
         self.env.pop_func()
         return return_val
@@ -146,12 +146,14 @@ class Interpreter(InterpreterBase):
 
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
+        # ! need to change -> don't call __eval_expr when assigning
+        # ! set to a thunk object
         value_obj = self.__eval_expr(assign_ast.get("expression"))
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
             )
-    
+
     def __var_def(self, var_ast):
         var_name = var_ast.get("name")
         if not self.env.create(var_name, Interpreter.NIL_VALUE):
@@ -306,9 +308,9 @@ class Interpreter(InterpreterBase):
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
     def __do_for(self, for_ast):
-        init_ast = for_ast.get("init") 
+        init_ast = for_ast.get("init")
         cond_ast = for_ast.get("condition")
-        update_ast = for_ast.get("update") 
+        update_ast = for_ast.get("update")
 
         self.__run_statement(init_ast)  # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
@@ -334,3 +336,27 @@ class Interpreter(InterpreterBase):
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
         value_obj = copy.copy(self.__eval_expr(expr_ast))
         return (ExecStatus.RETURN, value_obj)
+
+
+# if __name__ == "__main__":
+#     interpreter = Interpreter()
+
+#     directory = "tests/v3/tests/run_these_now"
+#     # directory = "tests/v3/200-test/tests"
+#     # directory = "tests/v3/tests/spec_tests"
+#     # directory = "tests/v3/tests/passed"
+#     # directory = "tests/v3/tests/failed"
+#     # directory = "tests/v3/tests/tests_from_campuswire/tests"
+#     # directory = "tests/v3/intended_errors/failed"
+#     # directory = "tests/v3/intended_errors/run_these_now"
+
+#     # Loop through all files in the specified directory
+#     for filename in os.listdir(directory):
+#         file_path = os.path.join(directory, filename)
+#         if os.path.isfile(file_path):
+#             print(f"Processing file: {filename}")
+#             with open(file_path, "r") as file:
+#                 content = file.read()
+#                 # Run the interpreter on the file content
+#                 interpreter.run(content)
+#             print()

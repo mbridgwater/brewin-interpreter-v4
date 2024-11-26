@@ -26,7 +26,7 @@ class EnvironmentManager:
     # in a lower environment
     def create(self, symbol, value):
         cur_func_env = self.environment[-1]
-        if symbol in cur_func_env[-1]:   # symbol already defined in current scope
+        if symbol in cur_func_env[-1]:  # symbol already defined in current scope
             return False
         cur_func_env[-1][symbol] = value
         return True
@@ -41,9 +41,8 @@ class EnvironmentManager:
 
     def pop_block(self):
         cur_func_env = self.environment[-1]
-        cur_func_env.pop() 
+        cur_func_env.pop()
 
     # used when we exit a nested block to discard the environment for that block
     def pop_func(self):
         self.environment.pop()
-
