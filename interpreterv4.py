@@ -130,9 +130,11 @@ class Interpreter(InterpreterBase):
             )
 
         # first evaluate all of the actual parameters and associate them with the formal parameter names
+        # pass actual parameters as a thunk object
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
-            result = copy.copy(self.__eval_expr(actual_ast, env_to_search))
+            # result = copy.copy(self.__eval_expr(actual_ast, env_to_search))
+            result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
@@ -152,6 +154,7 @@ class Interpreter(InterpreterBase):
         output = ""
         for arg in args:
             result = self.__eval_expr(arg, env_to_search)  # result is a Value object
+            debug(get_printable_debug(result))
             output = output + get_printable(result)
         super().output(output)
         return Interpreter.NIL_VALUE
@@ -195,6 +198,8 @@ class Interpreter(InterpreterBase):
 
     @debug_logger
     def __eval_expr(self, expr_ast, env_to_search=None):
+        # We want to guarentee that anytime __eval_expr is called, a non-thunk object is called
+        debug(f"expr_ast.elem_type is {expr_ast.elem_type}")
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
             return Interpreter.NIL_VALUE
         if expr_ast.elem_type == InterpreterBase.INT_NODE:
@@ -210,28 +215,51 @@ class Interpreter(InterpreterBase):
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             debug(get_printable_debug(val))
-            if val.type() == Type.THUNK:
-                debug(
-                    f"AFTER push_func: self.env.get_printable_env(): {self.env.get_printable_env()}"
-                )
-                value_obj = self.__eval_expr(
-                    val.value().expr(), val.value().env_snapshot()
-                )
-                val.set_value_type(value_obj.value(), value_obj.type())
-            return val
+            # Force thunk to evaluate
+            return_val = self.__force_thunk_evaluation(val)
+            self.__check_if_thunk(return_val)
+            return return_val
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            return self.__call_func(expr_ast)
+            val = self.__call_func(expr_ast)
+            return_val = self.__force_thunk_evaluation(val)
+            self.__check_if_thunk(return_val)
+            return return_val
+            # return self.__call_func(expr_ast)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
-            return self.__eval_op(expr_ast, env_to_search)
+            return_val = self.__eval_op(expr_ast, env_to_search)
+            self.__check_if_thunk(return_val)
+            return return_val
         if expr_ast.elem_type == Interpreter.NEG_NODE:
-            return self.__eval_unary(
+            return_val = self.__eval_unary(
                 expr_ast, Type.INT, lambda x: -1 * x, env_to_search
             )
+            self.__check_if_thunk(return_val)
+            return return_val
         if expr_ast.elem_type == Interpreter.NOT_NODE:
-            return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
+            return_val = self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
+            self.__check_if_thunk(return_val)
+            return return_val
+            # return self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
+
+    def __check_if_thunk(self, ret_val):
+        if ret_val.type() == Type.THUNK:
+            super().error(
+                ErrorType.TYPE_ERROR,
+                f"THIS IS A PROBLEM: WE SHOULD NOT RETURN A THUNK OBJECT TYPE IN EVAL_EXPR",
+            )
+
+    @debug_logger
+    def __force_thunk_evaluation(self, val):
+        if (
+            val.type() == Type.THUNK
+        ):  # !!! maybe make this a while, shouldn't be necessary bc eval_expr should guarentee to return a value object
+            value_obj = self.__eval_expr(val.value().expr(), val.value().env_snapshot())
+            val.set_value_type(value_obj.value(), value_obj.type())
+        return val
 
     @debug_logger
     def __eval_op(self, arith_ast, env_to_search):
+        debug(f"arith_ast.get(op1) is {arith_ast.get("op1")}")
         left_value_obj = self.__eval_expr(arith_ast.get("op1"), env_to_search)
         right_value_obj = self.__eval_expr(arith_ast.get("op2"), env_to_search)
         if not self.__compatible_types(
@@ -398,21 +426,17 @@ class Interpreter(InterpreterBase):
         expr_ast = return_ast.get("expression")
         if expr_ast is None:
             return (ExecStatus.RETURN, Interpreter.NIL_VALUE)
-        value_obj = copy.copy(self.__eval_expr(expr_ast))
+        # value_obj = copy.copy(self.__eval_expr(expr_ast))
+        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
         return (ExecStatus.RETURN, value_obj)
 
 
 if __name__ == "__main__":
     interpreter = Interpreter()
 
-    directory = "tests/tests/run_these_now"
-    # directory = "tests/v3/200-test/tests"
-    # directory = "tests/v3/tests/spec_tests"
-    # directory = "tests/v3/tests/passed"
-    # directory = "tests/v3/tests/failed"
-    # directory = "tests/v3/tests/tests_from_campuswire/tests"
-    # directory = "tests/v3/intended_errors/failed"
-    # directory = "tests/v3/intended_errors/run_these_now"
+    # directory = "tests/tests/run_these_now"
+    directory = "tests/tests/passed"
+    # directory = "tests/intended_errors/run_these_now"
 
     # Loop through all files in the specified directory
     for filename in os.listdir(directory):
