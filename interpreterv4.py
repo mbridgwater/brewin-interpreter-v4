@@ -21,13 +21,14 @@ import os  # remove/add as needed
 from debug_utils import (
     debug_logger,
     debug,
-    _understand_ast,
+    understand_ast,
 )
 
 
 class ExecStatus(Enum):
     CONTINUE = 1
     RETURN = 2
+    RAISE = 3  # Add a status to raise an error
 
 
 # Main interpreter class
@@ -82,7 +83,7 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print(statement)
             status, return_val = self.__run_statement(statement, env_to_search)
-            if status == ExecStatus.RETURN:
+            if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                 self.env.pop_block()
                 return (status, return_val)
 
@@ -101,10 +102,14 @@ class Interpreter(InterpreterBase):
             self.__var_def(statement)
         elif statement.elem_type == InterpreterBase.RETURN_NODE:
             status, return_val = self.__do_return(statement)
-        elif statement.elem_type == Interpreter.IF_NODE:
+        elif statement.elem_type == InterpreterBase.IF_NODE:
             status, return_val = self.__do_if(statement, env_to_search)
-        elif statement.elem_type == Interpreter.FOR_NODE:
+        elif statement.elem_type == InterpreterBase.FOR_NODE:
             status, return_val = self.__do_for(statement, env_to_search)
+        elif statement.elem_type == InterpreterBase.TRY_NODE:
+            status, return_val = self.__do_try(statement)
+        elif statement.elem_type == InterpreterBase.RAISE_NODE:
+            status, return_val = self.__do_raise(statement)
 
         return (status, return_val)
 
@@ -134,6 +139,7 @@ class Interpreter(InterpreterBase):
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             # result = copy.copy(self.__eval_expr(actual_ast, env_to_search))
+            # enforce lazy evaluation by passing a thunk object
             result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
@@ -177,11 +183,7 @@ class Interpreter(InterpreterBase):
     @debug_logger
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
-        # ! need to change -> don't call __eval_expr when assigning
-        # ! set to a thunk object
         expr_ast = assign_ast.get("expression")
-        # value_obj = self.__eval_expr(assign_ast.get("expression"))
-        # if not self.env.set(var_name, value_obj):
         value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
         if not self.env.set(var_name, value_obj):
             super().error(
@@ -413,7 +415,7 @@ class Interpreter(InterpreterBase):
                 status, return_val = self.__run_statements(
                     statements, env_to_search
                 )  # ??? does env_to_search go here?
-                if status == ExecStatus.RETURN:
+                if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                     return status, return_val
                 self.__run_statement(
                     update_ast, env_to_search  # ??? does env_to_search go here?
@@ -429,6 +431,44 @@ class Interpreter(InterpreterBase):
         # value_obj = copy.copy(self.__eval_expr(expr_ast))
         value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
         return (ExecStatus.RETURN, value_obj)
+
+    # !!! ??? should I pass in env_to_search here or no
+    @debug_logger
+    def __do_try(self, try_ast):
+        # Run the statements in the try block (either all run or run until error or until hit raise statement or until hit return)
+        statements = try_ast.get("statements")
+        # don't need to worry about scoping as this is taking care of by __run_statements
+        status, return_val = self.__run_statements(statements)
+        # If the status is RAISE, look through catchers to see if it matches any
+        if status == ExecStatus.RAISE:
+            catchers = try_ast.get("catchers")
+            for catch_ast in catchers:
+                # If the catch exception type is the same as the raised exception value, run the catch block, returning the status and return_val
+                if catch_ast.get("exception_type") == return_val.value():
+                    catch_statements = catch_ast.get("statements")
+                    status, return_val = self.__run_statements(catch_statements)
+                    return (status, return_val)
+            # No matching catch statement
+            super().error(
+                ErrorType.FAULT_ERROR,
+                "Raise condition is not caught",
+            )
+        return (status, return_val)
+        # return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
+        # !!! any reason i might want above instead of what i have now (similar to do_for and such)
+
+    @debug_logger
+    def __do_raise(self, raise_ast):
+        # Eagerly evaluate the raise exception type
+        value_obj = self.__eval_expr(raise_ast.get("exception_type"))
+        # Make sure returned type is of string type
+        if value_obj.type() != Type.STRING:
+            super().error(
+                ErrorType.TYPE_ERROR,
+                "Raise condition does not evaluate to a string",
+            )
+        # Return that raise value with RAISE status
+        return (ExecStatus.RAISE, value_obj)
 
 
 if __name__ == "__main__":
