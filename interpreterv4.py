@@ -231,7 +231,11 @@ class Interpreter(InterpreterBase):
             self.__check_if_thunk(return_val)
             return return_val
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            _, val = self.__call_func(expr_ast)  # !!! ??? should i look at status here
+            status, val = self.__call_func(
+                expr_ast
+            )  # !!! ??? should i look at status here
+            if status == ExecStatus.RAISE:
+                super().error(ErrorType.FAULT_ERROR, f"Trying to evaluate a RAISE type")
             return_val = self.__force_thunk_evaluation(val)
             self.__check_if_thunk(return_val)
             return return_val
@@ -450,6 +454,7 @@ class Interpreter(InterpreterBase):
     @debug_logger
     def __do_try(self, try_ast):
         # Run the statements in the try block (either all run or run until error or until hit raise statement or until hit return)
+        self.env.nested_trys += 1
         statements = try_ast.get("statements")
         # don't need to worry about scoping as this is taking care of by __run_statements
         try:
@@ -467,11 +472,19 @@ class Interpreter(InterpreterBase):
                     status, return_val = self.__run_statements(catch_statements)
                     debug(f"status is {status}")
                     return (status, return_val)
+            self.env.nested_trys -= 1
             # No matching catch statement
-            super().error(
-                ErrorType.FAULT_ERROR,
-                "Raise condition is not caught",
-            )
+            # !!! here, the error is that I can't just look through the catch block for the
+            # !!! most local try block, I need to go through ALL try's catch blocks inward to outward
+            # !!! maybe have a global var or smth that tracks each catch it can look through
+            # !!! if the global is empty and we are at the end of the above loop, return error as doing below, otherwise continue with the status errors
+            # !!! can maybe even j do this with a counter --> each time you enter try, increment it and each time you exit
+            # !!! try, decrement it
+            if self.env.nested_trys == 0:
+                super().error(
+                    ErrorType.FAULT_ERROR,
+                    "Raise condition is not caught",
+                )
         debug(f"status is {status}")
         return (status, return_val)
         # return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
@@ -494,8 +507,8 @@ class Interpreter(InterpreterBase):
 if __name__ == "__main__":
     interpreter = Interpreter()
 
-    directory = "tests/tests/run_these_now"
-    # directory = "tests/tests/passed"
+    # directory = "tests/tests/run_these_now"
+    directory = "tests/tests/passed"
     # directory = "tests/intended_errors/run_these_now"
 
     # Loop through all files in the specified directory
