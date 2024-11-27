@@ -54,7 +54,7 @@ class Interpreter(InterpreterBase):
         self.env = EnvironmentManager()
         self.__call_func_aux("main", [])
 
-    @debug_logger
+    # @debug_logger
     def __set_up_function_table(self, ast):
         self.func_name_to_ast = {}
         for func_def in ast.get("functions"):
@@ -64,7 +64,7 @@ class Interpreter(InterpreterBase):
                 self.func_name_to_ast[func_name] = {}
             self.func_name_to_ast[func_name][num_params] = func_def
 
-    @debug_logger
+    # @debug_logger
     def __get_func_by_name(self, name, num_params):
         if name not in self.func_name_to_ast:
             super().error(ErrorType.NAME_ERROR, f"Function {name} not found")
@@ -83,8 +83,11 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print(statement)
             status, return_val = self.__run_statement(statement, env_to_search)
+            debug(f"status is: {status}")
+            debug(f"statement.elem_type is: {statement.elem_type}")
             if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                 self.env.pop_block()
+                debug(f"status is {status}")
                 return (status, return_val)
 
         self.env.pop_block()
@@ -95,7 +98,11 @@ class Interpreter(InterpreterBase):
         status = ExecStatus.CONTINUE
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
-            self.__call_func(statement)
+            # self.__call_func(statement)
+            func_status, func_return_val = self.__call_func(statement)
+            if func_status == ExecStatus.RAISE:
+                status = func_status
+                return_val = func_return_val
         elif statement.elem_type == "=":
             self.__assign(statement)
         elif statement.elem_type == InterpreterBase.VAR_DEF_NODE:
@@ -110,7 +117,7 @@ class Interpreter(InterpreterBase):
             status, return_val = self.__do_try(statement)
         elif statement.elem_type == InterpreterBase.RAISE_NODE:
             status, return_val = self.__do_raise(statement)
-
+        debug(f"status is {status}")
         return (status, return_val)
 
     @debug_logger
@@ -122,9 +129,11 @@ class Interpreter(InterpreterBase):
     @debug_logger
     def __call_func_aux(self, func_name, actual_args, env_to_search=None):
         if func_name == "print":
-            return self.__call_print(actual_args, env_to_search)
+            return ExecStatus.CONTINUE, self.__call_print(actual_args, env_to_search)
         if func_name == "inputi" or func_name == "inputs":
-            return self.__call_input(func_name, actual_args, env_to_search)
+            return ExecStatus.CONTINUE, self.__call_input(
+                func_name, actual_args, env_to_search
+            )
 
         func_ast = self.__get_func_by_name(func_name, len(actual_args))
         formal_args = func_ast.get("args")
@@ -149,11 +158,11 @@ class Interpreter(InterpreterBase):
         # and add the formal arguments to the activation record
         for arg_name, value in args.items():
             self.env.create(arg_name, value)
-        _, return_val = self.__run_statements(
+        status, return_val = self.__run_statements(
             func_ast.get("statements"), env_to_search
         )  # ??? should env_to_search go here?
         self.env.pop_func()
-        return return_val
+        return status, return_val
 
     @debug_logger
     def __call_print(self, args, env_to_search=None):
@@ -222,12 +231,15 @@ class Interpreter(InterpreterBase):
             self.__check_if_thunk(return_val)
             return return_val
         if expr_ast.elem_type == InterpreterBase.FCALL_NODE:
-            val = self.__call_func(expr_ast)
+            _, val = self.__call_func(expr_ast)  # !!! ??? should i look at status here
             return_val = self.__force_thunk_evaluation(val)
             self.__check_if_thunk(return_val)
             return return_val
-            # return self.__call_func(expr_ast)
         if expr_ast.elem_type in Interpreter.BIN_OPS:
+            # try:
+            #     return_val = self.__eval_op(expr_ast, env_to_search)
+            # except ZeroDivisionError as e:
+            #     return_val = Value(Type.STRING, "div0")
             return_val = self.__eval_op(expr_ast, env_to_search)
             self.__check_if_thunk(return_val)
             return return_val
@@ -380,6 +392,7 @@ class Interpreter(InterpreterBase):
             status, return_val = self.__run_statements(
                 statements, env_to_search
             )  # ??? does env_to_search go here?
+            debug(f"status is {status}")
             return (status, return_val)
         else:
             else_statements = if_ast.get("else_statements")
@@ -387,6 +400,7 @@ class Interpreter(InterpreterBase):
                 status, return_val = self.__run_statements(
                     else_statements, env_to_search  # ??? does env_to_search go here?
                 )
+                debug(f"status is {status}")
                 return (status, return_val)
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
@@ -438,21 +452,27 @@ class Interpreter(InterpreterBase):
         # Run the statements in the try block (either all run or run until error or until hit raise statement or until hit return)
         statements = try_ast.get("statements")
         # don't need to worry about scoping as this is taking care of by __run_statements
-        status, return_val = self.__run_statements(statements)
+        try:
+            status, return_val = self.__run_statements(statements)
+        except ZeroDivisionError:
+            status, return_val = ExecStatus.RAISE, Value(Type.STRING, "div0")
         # If the status is RAISE, look through catchers to see if it matches any
         if status == ExecStatus.RAISE:
+            debug("Status is ExecStatus.RAISE")
             catchers = try_ast.get("catchers")
             for catch_ast in catchers:
                 # If the catch exception type is the same as the raised exception value, run the catch block, returning the status and return_val
                 if catch_ast.get("exception_type") == return_val.value():
                     catch_statements = catch_ast.get("statements")
                     status, return_val = self.__run_statements(catch_statements)
+                    debug(f"status is {status}")
                     return (status, return_val)
             # No matching catch statement
             super().error(
                 ErrorType.FAULT_ERROR,
                 "Raise condition is not caught",
             )
+        debug(f"status is {status}")
         return (status, return_val)
         # return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
         # !!! any reason i might want above instead of what i have now (similar to do_for and such)
@@ -474,8 +494,8 @@ class Interpreter(InterpreterBase):
 if __name__ == "__main__":
     interpreter = Interpreter()
 
-    # directory = "tests/tests/run_these_now"
-    directory = "tests/tests/passed"
+    directory = "tests/tests/run_these_now"
+    # directory = "tests/tests/passed"
     # directory = "tests/intended_errors/run_these_now"
 
     # Loop through all files in the specified directory
