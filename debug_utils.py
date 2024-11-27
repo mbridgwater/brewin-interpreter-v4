@@ -1,7 +1,7 @@
 from brewparse import parse_program
-from type_valuev3 import get_printable
+from type_valuev4 import get_printable
 
-DEBUG_MODE = True  # Toggle for debugging
+DEBUG_MODE = False  # Toggle for debugging
 INFO_MODE = True  # Toggle for general information
 indent_amount = 0  # Tracks current indentation level for functions
 BLUE = "\033[94m"  # To color print statements
