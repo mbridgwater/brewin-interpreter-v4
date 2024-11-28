@@ -6,6 +6,7 @@ from type_valuev4 import get_printable_debug
 class EnvironmentManager:
     def __init__(self):
         self.environment = []
+        self.nested_trys = 0
 
     # returns a VariableDef object
     def get(self, symbol, env_snapshot=None):

@@ -1,5 +1,14 @@
 # Implementation Details
 
+## Error Handling
+- We add an ExecStatus.RAISE type
+- When we hit a raise, we eagerly evaluate its expression and return (ExecStatus.RAISE, raise_val_obj)
+- We must make sure that this status is propagated across function calls and scopes
+    - A raise can occur when evaluating an expression (if part of expression is function that raises something), calling a function, p much anytime etc (won't happen for __assign or __var_def)
+    - Alter the eval_expr to also return a status and if that status is RAISE, return (model it like run_statement)
+    - Within __eval_expr, only the FCALL_NODE elem type will actually result in a RAISE status. Then check every eval_expr call and __call_func call and return if raise status
+    - Had to add this status tp __call_print as well
+
 ## Lazy evaluation
 
 ### Value Object
@@ -71,7 +80,8 @@
         print("ending");
     }
     ```
-- !!! CHECK ALL OTHER CALLS TO EVAL_EXPR FOR A SITUATION LIKE THIS
+- Same as above for returns 
+- For the __eval_expr function, we want to guarentee that it will NEVER return a Thunk Object
 
 ### NOTE FOR LAZY EVAL
 - Only really need to change assign to not call eval_expr unless in the case of an eager evaluation
