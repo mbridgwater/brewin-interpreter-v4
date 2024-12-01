@@ -1,7 +1,7 @@
 from brewparse import parse_program
 from type_valuev4 import get_printable
 
-DEBUG_MODE = False  # Toggle for debugging
+DEBUG_MODE = True  # Toggle for debugging
 INFO_MODE = True  # Toggle for general information
 indent_amount = 0  # Tracks current indentation level for functions
 BLUE = "\033[94m"  # To color print statements
@@ -58,7 +58,7 @@ def debug_logger_with_return_val(func):
     return wrapper
 
 
-def _understand_ast(program):
+def understand_ast(program):
     """This function is intended for internal debugging use to understand
     the ast tree and how to read it"""
     # print("----------------PROGRAM----------------")
