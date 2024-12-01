@@ -33,6 +33,21 @@
 - Variable definitions
 - Scoping
 
+### Environment searching
+- When evaluating the thunk object, we pass its snapshot as the environment to search for eval_expr. Thus, every function within eval_expr must also take this parameter (except __force_thunk_evaluation and __check_if_thunk). This includes:
+    - self.env.get()
+    - __call_func
+    - __eval_unary
+    - __eval_op
+    - Recursively, all sub functions of these above functions must also take the snapshot param, including
+        - __call_func_aux
+        - __call_print
+
+- INSTEAD OF ABOVE APPROACH: have a global environment pointer that points to the correct environment
+
+
+
+
 ### Assignments
 - As soon as we assign, set the variable type to THUNK and value to a thunk object that calls thunks constructor
 - Capturing variables
