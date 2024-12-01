@@ -1,6 +1,6 @@
 # The EnvironmentManager class keeps a mapping between each variable name (aka symbol)
 # in a brewin program and the Value object, which stores a type, and a value.
-from type_valuev4 import get_printable_debug
+# from type_valuev4 import get_printable_debug
 
 
 class EnvironmentManager:
@@ -53,29 +53,29 @@ class EnvironmentManager:
     def pop_func(self):
         self.environment.pop()
 
-    def get_printable_env(self):
-        my_str = "["
-        blk_cnt = 0
-        for block in self.environment:
-            my_str += "["
-            func_cnt = 0
+    # def get_printable_env(self):
+    #     my_str = "["
+    #     blk_cnt = 0
+    #     for block in self.environment:
+    #         my_str += "["
+    #         func_cnt = 0
 
-            for func_scope in block:
-                my_str += "{"
-                for key, val in func_scope.items():
-                    # !!! if having issues turning in, make sure to remove this
-                    my_str += "'" + key + "': "
-                    my_str += get_printable_debug(val)
-                    if key != list(func_scope.keys())[-1]:
-                        my_str += ", "
-                my_str += "}"
-                if func_cnt != len(block) - 1:
-                    my_str += ", "
-                func_cnt += 1
+    #         for func_scope in block:
+    #             my_str += "{"
+    #             for key, val in func_scope.items():
+    #                 # !!! if having issues turning in, make sure to remove this
+    #                 my_str += "'" + key + "': "
+    #                 my_str += get_printable_debug(val)
+    #                 if key != list(func_scope.keys())[-1]:
+    #                     my_str += ", "
+    #             my_str += "}"
+    #             if func_cnt != len(block) - 1:
+    #                 my_str += ", "
+    #             func_cnt += 1
 
-            my_str += "]"
-            if blk_cnt != len(self.environment) - 1:
-                my_str += ", "
-            blk_cnt += 1
-        my_str += "]"
-        return my_str
+    #         my_str += "]"
+    #         if blk_cnt != len(self.environment) - 1:
+    #             my_str += ", "
+    #         blk_cnt += 1
+    #     my_str += "]"
+    #     return my_str

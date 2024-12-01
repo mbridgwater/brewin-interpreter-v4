@@ -82,37 +82,37 @@ def get_printable(val):
     return None
 
 
-def get_printable_debug(val):
-    return (
-        f"(t: {val.type()}, v: {val.value()})"
-        if val.type() != Type.THUNK
-        else f"(t: {val.type()}, v: (expr: {val.value().expr()}), (env_snapshot: {get_printable_env(val.value().env_snapshot())}))"
-    )
+# def get_printable_debug(val):
+#     return (
+#         f"(t: {val.type()}, v: {val.value()})"
+#         if val.type() != Type.THUNK
+#         else f"(t: {val.type()}, v: (expr: {val.value().expr()}), (env_snapshot: {get_printable_env(val.value().env_snapshot())}))"
+#     )
 
 
-def get_printable_env(env_snapshot):
-    my_str = "["
-    blk_cnt = 0
-    for block in env_snapshot:
-        my_str += "["
-        func_cnt = 0
+# def get_printable_env(env_snapshot):
+#     my_str = "["
+#     blk_cnt = 0
+#     for block in env_snapshot:
+#         my_str += "["
+#         func_cnt = 0
 
-        for func_scope in block:
-            my_str += "{"
-            for key, val in func_scope.items():
-                # !!! if having issues turning in, make sure to remove this
-                my_str += "'" + key + "': "
-                my_str += get_printable_debug(val)
-                if key != list(func_scope.keys())[-1]:
-                    my_str += ", "
-            my_str += "}"
-            if func_cnt != len(block) - 1:
-                my_str += ", "
-            func_cnt += 1
+#         for func_scope in block:
+#             my_str += "{"
+#             for key, val in func_scope.items():
+#                 # !!! if having issues turning in, make sure to remove this
+#                 my_str += "'" + key + "': "
+#                 my_str += get_printable_debug(val)
+#                 if key != list(func_scope.keys())[-1]:
+#                     my_str += ", "
+#             my_str += "}"
+#             if func_cnt != len(block) - 1:
+#                 my_str += ", "
+#             func_cnt += 1
 
-        my_str += "]"
-        if blk_cnt != len(env_snapshot) - 1:
-            my_str += ", "
-        blk_cnt += 1
-    my_str += "]"
-    return my_str
+#         my_str += "]"
+#         if blk_cnt != len(env_snapshot) - 1:
+#             my_str += ", "
+#         blk_cnt += 1
+#     my_str += "]"
+#     return my_str
