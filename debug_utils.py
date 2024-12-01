@@ -58,7 +58,7 @@ def debug_logger_with_return_val(func):
     return wrapper
 
 
-def _understand_ast(program):
+def understand_ast(program):
     """This function is intended for internal debugging use to understand
     the ast tree and how to read it"""
     # print("----------------PROGRAM----------------")
