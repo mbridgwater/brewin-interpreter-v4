@@ -77,12 +77,12 @@ class Interpreter(InterpreterBase):
         return candidate_funcs[num_params]
 
     # @debug_logger
-    def __run_statements(self, statements, env_to_search=None):
+    def __run_statements(self, statements):
         self.env.push_block()
         for statement in statements:
             if self.trace_output:
                 print(statement)
-            status, return_val = self.__run_statement(statement, env_to_search)
+            status, return_val = self.__run_statement(statement)
             # debug(f"status is: {status}")
             # debug(f"statement.elem_type is: {statement.elem_type}")
             if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
@@ -94,7 +94,7 @@ class Interpreter(InterpreterBase):
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
     # @debug_logger
-    def __run_statement(self, statement, env_to_search=None):
+    def __run_statement(self, statement):
         status = ExecStatus.CONTINUE
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
@@ -110,9 +110,9 @@ class Interpreter(InterpreterBase):
         elif statement.elem_type == InterpreterBase.RETURN_NODE:
             status, return_val = self.__do_return(statement)
         elif statement.elem_type == InterpreterBase.IF_NODE:
-            status, return_val = self.__do_if(statement, env_to_search)
+            status, return_val = self.__do_if(statement)
         elif statement.elem_type == InterpreterBase.FOR_NODE:
-            status, return_val = self.__do_for(statement, env_to_search)
+            status, return_val = self.__do_for(statement)
         elif statement.elem_type == InterpreterBase.TRY_NODE:
             status, return_val = self.__do_try(statement)
         elif statement.elem_type == InterpreterBase.RAISE_NODE:
@@ -121,18 +121,23 @@ class Interpreter(InterpreterBase):
         return (status, return_val)
 
     # @debug_logger
-    def __call_func(self, call_node, env_to_search=None):
+    def __call_func(self, call_node):
         func_name = call_node.get("name")
         actual_args = call_node.get("args")
-        return self.__call_func_aux(func_name, actual_args, env_to_search)
+        return self.__call_func_aux(func_name, actual_args)
+
 
     # @debug_logger
-    def __call_func_aux(self, func_name, actual_args, env_to_search=None):
+    def __call_func_aux(self, func_name, actual_args):
         # __call_print and __call_input now return status and value
         if func_name == "print":
-            return self.__call_print(actual_args, env_to_search)
+            status, result = self.__call_print(actual_args)
+            # self.env.curr_env_ptr = temp_env_ptr
+            return status, result
         if func_name == "inputi" or func_name == "inputs":
-            return self.__call_input(func_name, actual_args, env_to_search)
+            status, result = self.__call_input(func_name, actual_args)
+            # self.env.curr_env_ptr = temp_env_ptr
+            return status, result
 
         func_ast = self.__get_func_by_name(func_name, len(actual_args))
         formal_args = func_ast.get("args")
@@ -146,9 +151,9 @@ class Interpreter(InterpreterBase):
         # pass actual parameters as a thunk object
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
-            # result = copy.copy(self.__eval_expr(actual_ast, env_to_search))
             # enforce lazy evaluation by passing a thunk object
-            result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment))
+            # result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment)) # !!! maybe put back
+            result = Value(Type.THUNK, Thunk(actual_ast, self.env.curr_env_ptr))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
@@ -157,11 +162,7 @@ class Interpreter(InterpreterBase):
         # and add the formal arguments to the activation record
         for arg_name, value in args.items():
             self.env.create(arg_name, value)
-        status, return_val = self.__run_statements(
-            func_ast.get("statements"), env_to_search
-        )  # ??? should env_to_search go here?
-        # debug(f"self.env.nested_trys is {self.env.nested_trys}")
-        # debug(f"status is {status}")
+        status, return_val = self.__run_statements(func_ast.get("statements"))
         if self.env.nested_trys == 0 and status == ExecStatus.RAISE:
             super().error(
                 ErrorType.FAULT_ERROR,
@@ -171,11 +172,11 @@ class Interpreter(InterpreterBase):
         return (status, return_val)
 
     # @debug_logger
-    def __call_print(self, args, env_to_search=None):
+    def __call_print(self, args):
         output = ""
         for arg in args:
             # result is a Value object
-            status, result = self.__eval_expr(arg, env_to_search)
+            status, result = self.__eval_expr(arg)
             if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, result)
             # debug(get_printable_debug(result))
@@ -183,10 +184,11 @@ class Interpreter(InterpreterBase):
         super().output(output)
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
+
     # @debug_logger
-    def __call_input(self, name, args, env_to_search=None):
+    def __call_input(self, name, args):
         if args is not None and len(args) == 1:
-            status, result = self.__eval_expr(args[0], env_to_search)
+            status, result = self.__eval_expr(args[0])
             if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, result)
             super().output(get_printable(result))
@@ -204,7 +206,8 @@ class Interpreter(InterpreterBase):
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
         expr_ast = assign_ast.get("expression")
-        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
+        # value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment)) # !!! maybe put back
+        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.curr_env_ptr))
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
@@ -219,9 +222,11 @@ class Interpreter(InterpreterBase):
             )
 
     # @debug_logger
-    def __eval_expr(self, expr_ast, env_to_search=None):
+    def __eval_expr(self, expr_ast):
         # We want to guarentee that anytime __eval_expr is called, a non-thunk object is called
         # debug(f"expr_ast.elem_type is {expr_ast.elem_type}")
+        # debug(f"self.env.environment is {self.env.environment}")
+        # debug(f"self.env.curr_env_ptr is {self.env.curr_env_ptr}")
         status = ExecStatus.CONTINUE
         return_val = None
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
@@ -235,7 +240,10 @@ class Interpreter(InterpreterBase):
         elif expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             # searches appropriate environment (either global or captured one)
-            val = self.env.get(var_name, env_to_search)
+            # debug(
+            #     f"self.env.curr_env_ptr just before getting is: {self.env.curr_env_ptr}"
+            # )
+            val = self.env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             # debug(get_printable_debug(val))
@@ -253,16 +261,10 @@ class Interpreter(InterpreterBase):
                 return (ExecStatus.RAISE, return_val)
             self.__check_if_thunk(return_val)
         elif expr_ast.elem_type in Interpreter.BIN_OPS:
-            # try:
-            #     return_val = self.__eval_op(expr_ast, env_to_search)
-            # except ZeroDivisionError as e:
-            #     return_val = Value(Type.STRING, "div0")
-            status, return_val = self.__eval_op(expr_ast, env_to_search)
+            status, return_val = self.__eval_op(expr_ast)
             self.__check_if_thunk(return_val)
         elif expr_ast.elem_type == Interpreter.NEG_NODE:
-            status, return_val = self.__eval_unary(
-                expr_ast, Type.INT, lambda x: -1 * x, env_to_search
-            )
+            status, return_val = self.__eval_unary(expr_ast, Type.INT, lambda x: -1 * x)
             self.__check_if_thunk(return_val)
         elif expr_ast.elem_type == Interpreter.NOT_NODE:
             status, return_val = self.__eval_unary(expr_ast, Type.BOOL, lambda x: not x)
@@ -282,9 +284,16 @@ class Interpreter(InterpreterBase):
         if (
             val.type() == Type.THUNK
         ):  # !!! maybe make this a while, shouldn't be necessary bc eval_expr should guarentee to return a value object
-            status, value_obj = self.__eval_expr(
-                val.value().expr(), val.value().env_snapshot()
-            )
+            debug(f"val is {get_printable_debug(val)}")
+            debug(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
+            # Set global searching environment to val.value().env_snapshot()
+            debug("SET self.env.curr_env_ptr to val.value().env_snapshot()")
+            prev_env = self.env.curr_env_ptr
+            self.env.curr_env_ptr = val.value().env_snapshot()  # !!! where set this??
+            status, value_obj = self.__eval_expr(val.value().expr())
+            # Reset global searching environment to self.env.environment
+            debug("RESETTING self.env.curr_env_ptr")
+            self.env.curr_env_ptr = prev_env
             if (
                 status == ExecStatus.RAISE
             ):  # !!! not sure if this is a possible case anyway
@@ -293,7 +302,7 @@ class Interpreter(InterpreterBase):
         return (ExecStatus.CONTINUE, val)
 
     # @debug_logger
-    def __eval_op(self, arith_ast, env_to_search):
+    def __eval_op(self, arith_ast):
         # debug(f"arith_ast is {str(arith_ast)}")
         # debug(f"arith_ast.dict is {arith_ast.dict}")
         # debug(f"arith_ast.get(op1) is {arith_ast.get("op1")}")
@@ -301,9 +310,7 @@ class Interpreter(InterpreterBase):
         operator = arith_ast.elem_type
         # debug(f"operator is {operator}")
         # debug("evaluating left object")
-        left_status, left_value_obj = self.__eval_expr(
-            arith_ast.get("op1"), env_to_search
-        )
+        left_status, left_value_obj = self.__eval_expr(arith_ast.get("op1"))
         # debug(f"left_value_obj is: {get_printable(left_value_obj)}")
         if left_status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, left_value_obj)
@@ -323,10 +330,9 @@ class Interpreter(InterpreterBase):
         ):
             return ExecStatus.CONTINUE, Value(Type.BOOL, True)
         # debug("evaluating right object")
-        right_status, right_value_obj = self.__eval_expr(
-            arith_ast.get("op2"), env_to_search
-        )
+        right_status, right_value_obj = self.__eval_expr(arith_ast.get("op2"))
         # debug(f"right_value_obj is: {get_printable(right_value_obj)}")
+
         if right_status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, right_value_obj)
         # debug(f"right_status {right_status}, left_status {left_status}")
@@ -354,8 +360,8 @@ class Interpreter(InterpreterBase):
         return obj1.type() == obj2.type()
 
     # @debug_logger
-    def __eval_unary(self, arith_ast, t, f, env_to_search):
-        status, value_obj = self.__eval_expr(arith_ast.get("op1"), env_to_search)
+    def __eval_unary(self, arith_ast, t, f):
+        status, value_obj = self.__eval_expr(arith_ast.get("op1"))
         if status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, value_obj)
         if value_obj.type() != t:
@@ -435,10 +441,11 @@ class Interpreter(InterpreterBase):
             Type.BOOL, x.type() != y.type() or x.value() != y.value()
         )
 
+
     # @debug_logger
-    def __do_if(self, if_ast, env_to_search=None):
+    def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
-        status, result = self.__eval_expr(cond_ast, env_to_search)
+        status, result = self.__eval_expr(cond_ast)
         if status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, result)
         if result.type() != Type.BOOL:
@@ -448,36 +455,31 @@ class Interpreter(InterpreterBase):
             )
         if result.value():
             statements = if_ast.get("statements")
-            status, return_val = self.__run_statements(
-                statements, env_to_search
-            )  # ??? does env_to_search go here?
-            # debug(f"status is {status}")
+            status, return_val = self.__run_statements(statements)
             return (status, return_val)
         else:
             else_statements = if_ast.get("else_statements")
             if else_statements is not None:
-                status, return_val = self.__run_statements(
-                    else_statements, env_to_search  # ??? does env_to_search go here?
-                )
+                status, return_val = self.__run_statements(else_statements)
                 # debug(f"status is {status}")
                 return (status, return_val)
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
+
     # @debug_logger
-    def __do_for(self, for_ast, env_to_search=None):
+    def __do_for(self, for_ast):
         init_ast = for_ast.get("init")
         cond_ast = for_ast.get("condition")
         update_ast = for_ast.get("update")
 
-        self.__run_statement(
-            init_ast, env_to_search
-        )  # ??? does env_to_search go here? # initialize counter variable
+        self.__run_statement(init_ast)  # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
         while run_for.value():
-            status, run_for = self.__eval_expr(
-                cond_ast, env_to_search
-            )  # check for-loop condition
+            debug("evaluating expression for cond_ast to evaluate the condition")
+            # condition is eagerly evaluated
+            # !!! maybe update self.env.curr_env_ptr here?
+            status, run_for = self.__eval_expr(cond_ast)  # check for-loop condition
             if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, run_for)
             if run_for.type() != Type.BOOL:
@@ -487,15 +489,13 @@ class Interpreter(InterpreterBase):
                 )
             if run_for.value():
                 statements = for_ast.get("statements")
-                status, return_val = self.__run_statements(
-                    statements, env_to_search
-                )  # ??? does env_to_search go here?
+                status, return_val = self.__run_statements(statements)
                 if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                     # debug(f"status is {status}")
                     return (status, return_val)
-                self.__run_statement(
-                    update_ast, env_to_search  # ??? does env_to_search go here?
-                )  # update counter variable
+                debug("running statement for update_ast to updater the counter")
+                # update is not eagerly evaluated
+                self.__run_statement(update_ast)  # update counter variable
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
@@ -508,7 +508,6 @@ class Interpreter(InterpreterBase):
         value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
         return (ExecStatus.RETURN, value_obj)
 
-    # !!! ??? should I pass in env_to_search here or no
     # @debug_logger
     def __do_try(self, try_ast):
         # Run the statements in the try block (either all run or run until error or until hit raise statement or until hit return)
@@ -563,7 +562,7 @@ if __name__ == "__main__":
     interpreter = Interpreter()
 
     # directory = "tests/tests/run_these_now"
-    directory = "tests/tests/passed"
+    directory = "tests/tests/passed_debug-env"
     # directory = "tests/intended_errors/run_these_now"
 
     # Loop through all files in the specified directory
