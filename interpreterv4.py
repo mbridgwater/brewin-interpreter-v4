@@ -45,7 +45,7 @@ class Interpreter(InterpreterBase):
         self.__setup_ops()
 
     # run a program that's provided in a string
-    # usese the provided Parser found in brewparse.py to parse the program
+    # use the provided Parser found in brewparse.py to parse the program
     # into an abstract syntax tree (ast)
     # @debug_logger
     def run(self, program):
@@ -83,11 +83,8 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print(statement)
             status, return_val = self.__run_statement(statement)
-            # debug(f"status is: {status}")
-            # debug(f"statement.elem_type is: {statement.elem_type}")
             if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                 self.env.pop_block()
-                # debug(f"status is {status}")
                 return (status, return_val)
 
         self.env.pop_block()
@@ -98,7 +95,6 @@ class Interpreter(InterpreterBase):
         status = ExecStatus.CONTINUE
         return_val = None
         if statement.elem_type == InterpreterBase.FCALL_NODE:
-            # self.__call_func(statement)
             func_status, func_return_val = self.__call_func(statement)
             if func_status == ExecStatus.RAISE:
                 status = func_status
@@ -117,7 +113,6 @@ class Interpreter(InterpreterBase):
             status, return_val = self.__do_try(statement)
         elif statement.elem_type == InterpreterBase.RAISE_NODE:
             status, return_val = self.__do_raise(statement)
-        # debug(f"status is {status}")
         return (status, return_val)
 
     # @debug_logger
@@ -128,14 +123,11 @@ class Interpreter(InterpreterBase):
 
     # @debug_logger
     def __call_func_aux(self, func_name, actual_args):
-        # __call_print and __call_input now return status and value
         if func_name == "print":
             status, result = self.__call_print(actual_args)
-            # self.env.curr_env_ptr = temp_env_ptr
             return status, result
         if func_name == "inputi" or func_name == "inputs":
             status, result = self.__call_input(func_name, actual_args)
-            # self.env.curr_env_ptr = temp_env_ptr
             return status, result
 
         func_ast = self.__get_func_by_name(func_name, len(actual_args))
@@ -151,13 +143,13 @@ class Interpreter(InterpreterBase):
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             # enforce lazy evaluation by passing a thunk object
-            # result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment)) # !!! maybe put back
             result = Value(Type.THUNK, Thunk(actual_ast, self.env.curr_env_ptr))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
         # then create the new activation record
         self.env.push_func()
+
         # and add the formal arguments to the activation record
         for arg_name, value in args.items():
             self.env.create(arg_name, value)
@@ -178,7 +170,7 @@ class Interpreter(InterpreterBase):
             status, result = self.__eval_expr(arg)
             if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, result)
-            # debug(get_printable_debug(result))
+
             output = output + get_printable(result)
         super().output(output)
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
@@ -204,7 +196,6 @@ class Interpreter(InterpreterBase):
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
         expr_ast = assign_ast.get("expression")
-        # value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment)) # !!! maybe put back
         value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.curr_env_ptr))
         if not self.env.set(var_name, value_obj):
             super().error(
@@ -222,9 +213,6 @@ class Interpreter(InterpreterBase):
     # @debug_logger
     def __eval_expr(self, expr_ast):
         # We want to guarentee that anytime __eval_expr is called, a non-thunk object is called
-        # debug(f"expr_ast.elem_type is {expr_ast.elem_type}")
-        # debug(f"self.env.environment is {self.env.environment}")
-        # debug(f"self.env.curr_env_ptr is {self.env.curr_env_ptr}")
         status = ExecStatus.CONTINUE
         return_val = None
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
@@ -238,9 +226,6 @@ class Interpreter(InterpreterBase):
         elif expr_ast.elem_type == InterpreterBase.VAR_NODE:
             var_name = expr_ast.get("name")
             # searches appropriate environment (either global or captured one)
-            # debug(
-            #     f"self.env.curr_env_ptr just before getting is: {self.env.curr_env_ptr}"
-            # )
             val = self.env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
@@ -279,37 +264,22 @@ class Interpreter(InterpreterBase):
 
     # @debug_logger
     def __force_thunk_evaluation(self, val):
-        if (
-            val.type() == Type.THUNK
-        ):  # !!! maybe make this a while, shouldn't be necessary bc eval_expr should guarentee to return a value object
-            # debug(f"val is {get_printable_debug(val)}")
-            # debug(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
+        if val.type() == Type.THUNK:
             # Set global searching environment to val.value().env_snapshot()
-            # debug("SET self.env.curr_env_ptr to val.value().env_snapshot()")
             prev_env = self.env.curr_env_ptr
-            self.env.curr_env_ptr = val.value().env_snapshot()  # !!! where set this??
+            self.env.curr_env_ptr = val.value().env_snapshot()
             status, value_obj = self.__eval_expr(val.value().expr())
             # Reset global searching environment to self.env.environment
-            # debug("RESETTING self.env.curr_env_ptr")
             self.env.curr_env_ptr = prev_env
-            if (
-                status == ExecStatus.RAISE
-            ):  # !!! not sure if this is a possible case anyway
+            if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, value_obj)
             val.set_value_type(value_obj.value(), value_obj.type())
         return (ExecStatus.CONTINUE, val)
 
     # @debug_logger
     def __eval_op(self, arith_ast):
-        # debug(f"arith_ast is {str(arith_ast)}")
-        # debug(f"arith_ast.dict is {arith_ast.dict}")
-        # debug(f"arith_ast.get(op1) is {arith_ast.get("op1")}")
-        # debug(f"arith_ast.get(op2) is {arith_ast.get("op2")}")
         operator = arith_ast.elem_type
-        # debug(f"operator is {operator}")
-        # debug("evaluating left object")
         left_status, left_value_obj = self.__eval_expr(arith_ast.get("op1"))
-        # debug(f"left_value_obj is: {get_printable(left_value_obj)}")
         if left_status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, left_value_obj)
 
@@ -327,13 +297,10 @@ class Interpreter(InterpreterBase):
             and left_value_obj.value() == True
         ):
             return ExecStatus.CONTINUE, Value(Type.BOOL, True)
-        # debug("evaluating right object")
         right_status, right_value_obj = self.__eval_expr(arith_ast.get("op2"))
-        # debug(f"right_value_obj is: {get_printable(right_value_obj)}")
 
         if right_status == ExecStatus.RAISE:
             return (ExecStatus.RAISE, right_value_obj)
-        # debug(f"right_status {right_status}, left_status {left_status}")
         if not self.__compatible_types(operator, left_value_obj, right_value_obj):
             super().error(
                 ErrorType.TYPE_ERROR,
@@ -353,8 +320,6 @@ class Interpreter(InterpreterBase):
         # DOCUMENT: allow comparisons ==/!= of anything against anything
         if oper in ["==", "!="]:
             return True
-        # if oper == "&&" and obj1.type() == Type.BOOL and obj1.value() == Type.BOOL:
-        #     return True
         return obj1.type() == obj2.type()
 
     # @debug_logger
@@ -472,9 +437,6 @@ class Interpreter(InterpreterBase):
         self.__run_statement(init_ast)  # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
         while run_for.value():
-            # debug("evaluating expression for cond_ast to evaluate the condition")
-            # condition is eagerly evaluated
-            # !!! maybe update self.env.curr_env_ptr here?
             status, run_for = self.__eval_expr(cond_ast)  # check for-loop condition
             if status == ExecStatus.RAISE:
                 return (ExecStatus.RAISE, run_for)
@@ -487,9 +449,7 @@ class Interpreter(InterpreterBase):
                 statements = for_ast.get("statements")
                 status, return_val = self.__run_statements(statements)
                 if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
-                    # debug(f"status is {status}")
                     return (status, return_val)
-                # debug("running statement for update_ast to updater the counter")
                 # update is not eagerly evaluated
                 self.__run_statement(update_ast)  # update counter variable
 
@@ -523,7 +483,6 @@ class Interpreter(InterpreterBase):
                 if catch_ast.get("exception_type") == return_val.value():
                     catch_statements = catch_ast.get("statements")
                     status, return_val = self.__run_statements(catch_statements)
-                    # debug(f"status is {status}")
                     return (status, return_val)
             self.env.nested_trys -= 1
             # No matching catch statement

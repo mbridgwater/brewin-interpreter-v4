@@ -11,9 +11,6 @@ class EnvironmentManager:
 
     # returns a VariableDef object
     def get(self, symbol):
-        # cur_func_env = (
-        #     self.environment[-1] if env_snapshot is None else env_snapshot[-1]
-        # )
         cur_func_env = self.curr_env_ptr[-1]
         for env in reversed(cur_func_env):
             if symbol in env:
@@ -22,14 +19,12 @@ class EnvironmentManager:
         return None
 
     def set(self, symbol, value):
-        # cur_func_env = self.environment[-1]  # !!! maybe put back
         valid_set = False
         cur_func_env = self.curr_env_ptr[-1]
         for env in reversed(cur_func_env):
             if symbol in env:
                 env[symbol] = value
                 valid_set = True
-                # return True
                 break
         if self.curr_env_ptr is not self.environment and valid_set:
             cur_func_env = self.environment[-1]
@@ -45,7 +40,6 @@ class EnvironmentManager:
     # create a new symbol in the top-most environment, regardless of whether that symbol exists
     # in a lower environment
     def create(self, symbol, value):
-        # cur_func_env = self.environment[-1]  # !!! maybe put back
         if self.curr_env_ptr is self.environment:
             cur_func_env = self.curr_env_ptr[-1]
             if symbol in cur_func_env[-1]:  # symbol already defined in current scope
@@ -65,7 +59,6 @@ class EnvironmentManager:
 
     # used when we enter a new function - start with empty dictionary to hold parameters.
     def push_func(self):
-        # self.environment.append([{}])  # [[...]] -> [[...], [{}]] # !!! maybe put back
         if self.curr_env_ptr is self.environment:
             self.curr_env_ptr.append([{}])
         else:
@@ -80,7 +73,6 @@ class EnvironmentManager:
             cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
 
     def pop_block(self):
-        # cur_func_env = self.environment[-1]  # !!! maybe put back
         cur_func_env = self.curr_env_ptr[-1]
         cur_func_env.pop()
         if self.curr_env_ptr is not self.environment:
@@ -89,7 +81,6 @@ class EnvironmentManager:
 
     # used when we exit a nested block to discard the environment for that block
     def pop_func(self):
-        # self.environment.pop()  # !!! maybe put back
         self.curr_env_ptr.pop()
         if self.curr_env_ptr is not self.environment:
             self.environment.pop()
@@ -100,7 +91,7 @@ class EnvironmentManager:
     #     for block in self.environment:
     #         my_str += "["
     #         func_cnt = 0
-    
+
     #         for func_scope in block:
     #             my_str += "{"
     #             for key, val in func_scope.items():

@@ -42,9 +42,6 @@ class Value:
         self.__v = value
 
     def value(self):
-        # if self.__t == Type.THUNK:
-        #     # !!! force evaluation
-        #     pass
         return self.__v
 
     def type(self):
