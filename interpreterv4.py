@@ -126,7 +126,6 @@ class Interpreter(InterpreterBase):
         actual_args = call_node.get("args")
         return self.__call_func_aux(func_name, actual_args)
 
-
     # @debug_logger
     def __call_func_aux(self, func_name, actual_args):
         # __call_print and __call_input now return status and value
@@ -183,7 +182,6 @@ class Interpreter(InterpreterBase):
             output = output + get_printable(result)
         super().output(output)
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
-
 
     # @debug_logger
     def __call_input(self, name, args):
@@ -284,15 +282,15 @@ class Interpreter(InterpreterBase):
         if (
             val.type() == Type.THUNK
         ):  # !!! maybe make this a while, shouldn't be necessary bc eval_expr should guarentee to return a value object
-            debug(f"val is {get_printable_debug(val)}")
-            debug(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
+            # debug(f"val is {get_printable_debug(val)}")
+            # debug(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
             # Set global searching environment to val.value().env_snapshot()
-            debug("SET self.env.curr_env_ptr to val.value().env_snapshot()")
+            # debug("SET self.env.curr_env_ptr to val.value().env_snapshot()")
             prev_env = self.env.curr_env_ptr
             self.env.curr_env_ptr = val.value().env_snapshot()  # !!! where set this??
             status, value_obj = self.__eval_expr(val.value().expr())
             # Reset global searching environment to self.env.environment
-            debug("RESETTING self.env.curr_env_ptr")
+            # debug("RESETTING self.env.curr_env_ptr")
             self.env.curr_env_ptr = prev_env
             if (
                 status == ExecStatus.RAISE
@@ -441,7 +439,6 @@ class Interpreter(InterpreterBase):
             Type.BOOL, x.type() != y.type() or x.value() != y.value()
         )
 
-
     # @debug_logger
     def __do_if(self, if_ast):
         cond_ast = if_ast.get("condition")
@@ -466,7 +463,6 @@ class Interpreter(InterpreterBase):
 
         return (ExecStatus.CONTINUE, Interpreter.NIL_VALUE)
 
-
     # @debug_logger
     def __do_for(self, for_ast):
         init_ast = for_ast.get("init")
@@ -476,7 +472,7 @@ class Interpreter(InterpreterBase):
         self.__run_statement(init_ast)  # initialize counter variable
         run_for = Interpreter.TRUE_VALUE
         while run_for.value():
-            debug("evaluating expression for cond_ast to evaluate the condition")
+            # debug("evaluating expression for cond_ast to evaluate the condition")
             # condition is eagerly evaluated
             # !!! maybe update self.env.curr_env_ptr here?
             status, run_for = self.__eval_expr(cond_ast)  # check for-loop condition
@@ -493,7 +489,7 @@ class Interpreter(InterpreterBase):
                 if status == ExecStatus.RETURN or status == ExecStatus.RAISE:
                     # debug(f"status is {status}")
                     return (status, return_val)
-                debug("running statement for update_ast to updater the counter")
+                # debug("running statement for update_ast to updater the counter")
                 # update is not eagerly evaluated
                 self.__run_statement(update_ast)  # update counter variable
 
@@ -558,20 +554,20 @@ class Interpreter(InterpreterBase):
         return (ExecStatus.RAISE, value_obj)
 
 
-if __name__ == "__main__":
-    interpreter = Interpreter()
+# if __name__ == "__main__":
+#     interpreter = Interpreter()
 
-    # directory = "tests/tests/run_these_now"
-    directory = "tests/tests/passed_debug-env"
-    # directory = "tests/intended_errors/run_these_now"
+#     # directory = "tests/tests/run_these_now"
+#     directory = "tests/tests/passed_debug-env"
+#     # directory = "tests/intended_errors/run_these_now"
 
-    # Loop through all files in the specified directory
-    for filename in os.listdir(directory):
-        file_path = os.path.join(directory, filename)
-        if os.path.isfile(file_path):
-            print(f"Processing file: {filename}")
-            with open(file_path, "r") as file:
-                content = file.read()
-                # Run the interpreter on the file content
-                interpreter.run(content)
-            print()
+#     # Loop through all files in the specified directory
+#     for filename in os.listdir(directory):
+#         file_path = os.path.join(directory, filename)
+#         if os.path.isfile(file_path):
+#             print(f"Processing file: {filename}")
+#             with open(file_path, "r") as file:
+#                 content = file.read()
+#                 # Run the interpreter on the file content
+#                 interpreter.run(content)
+#             print()
