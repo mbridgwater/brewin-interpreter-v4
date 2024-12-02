@@ -154,7 +154,8 @@ class Interpreter(InterpreterBase):
         args = {}
         for formal_ast, actual_ast in zip(formal_args, actual_args):
             # enforce lazy evaluation by passing a thunk object
-            result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment))
+            # result = Value(Type.THUNK, Thunk(actual_ast, self.env.environment)) # !!! maybe put back
+            result = Value(Type.THUNK, Thunk(actual_ast, self.env.curr_env_ptr))
             arg_name = formal_ast.get("name")
             args[arg_name] = result
 
@@ -203,7 +204,8 @@ class Interpreter(InterpreterBase):
     def __assign(self, assign_ast):
         var_name = assign_ast.get("name")
         expr_ast = assign_ast.get("expression")
-        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment))
+        # value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.environment)) # !!! maybe put back
+        value_obj = Value(Type.THUNK, Thunk(expr_ast, self.env.curr_env_ptr))
         if not self.env.set(var_name, value_obj):
             super().error(
                 ErrorType.NAME_ERROR, f"Undefined variable {var_name} in assignment"
@@ -222,6 +224,7 @@ class Interpreter(InterpreterBase):
         # We want to guarentee that anytime __eval_expr is called, a non-thunk object is called
         debug(f"expr_ast.elem_type is {expr_ast.elem_type}")
         debug(f"self.env.environment is {self.env.environment}")
+        debug(f"self.env.curr_env_ptr is {self.env.curr_env_ptr}")
         status = ExecStatus.CONTINUE
         return_val = None
         if expr_ast.elem_type == InterpreterBase.NIL_NODE:
@@ -280,12 +283,16 @@ class Interpreter(InterpreterBase):
         if (
             val.type() == Type.THUNK
         ):  # !!! maybe make this a while, shouldn't be necessary bc eval_expr should guarentee to return a value object
-            print(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
+            debug(f"val is {get_printable_debug(val)}")
+            debug(f"val.value().env_snapshot() is: {val.value().env_snapshot()}")
             # Set global searching environment to val.value().env_snapshot()
+            debug("SET self.env.curr_env_ptr to val.value().env_snapshot()")
+            prev_env = self.env.curr_env_ptr
             self.env.curr_env_ptr = val.value().env_snapshot()  # !!! where set this??
             status, value_obj = self.__eval_expr(val.value().expr())
             # Reset global searching environment to self.env.environment
-            self.env.curr_env_ptr = self.env.environment
+            debug("RESETTING self.env.curr_env_ptr")
+            self.env.curr_env_ptr = prev_env
             if (
                 status == ExecStatus.RAISE
             ):  # !!! not sure if this is a possible case anyway
@@ -525,8 +532,8 @@ class Interpreter(InterpreterBase):
 if __name__ == "__main__":
     interpreter = Interpreter()
 
-    directory = "tests/tests/run_these_now"
-    # directory = "tests/tests/passed"
+    # directory = "tests/tests/run_these_now"
+    directory = "tests/tests/passed_debug-env"
     # directory = "tests/intended_errors/run_these_now"
 
     # Loop through all files in the specified directory

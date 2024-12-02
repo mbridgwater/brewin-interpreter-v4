@@ -23,42 +23,76 @@ class EnvironmentManager:
 
     def set(self, symbol, value):
         # cur_func_env = self.environment[-1]  # !!! maybe put back
+        valid_set = False
         cur_func_env = self.curr_env_ptr[-1]
         for env in reversed(cur_func_env):
             if symbol in env:
                 env[symbol] = value
-                return True
+                valid_set = True
+                # return True
+                break
+        if self.curr_env_ptr is not self.environment and valid_set:
+            cur_func_env = self.environment[-1]
+            for env in reversed(cur_func_env):
+                if symbol in env:
+                    env[symbol] = value
+                    return True
+        elif valid_set:
+            return True
 
         return False
 
     # create a new symbol in the top-most environment, regardless of whether that symbol exists
     # in a lower environment
     def create(self, symbol, value):
-        # cur_func_env = self.environment[-1] # !!! maybe put back
-        cur_func_env = self.curr_env_ptr[-1]
-        if symbol in cur_func_env[-1]:  # symbol already defined in current scope
-            return False
-        cur_func_env[-1][symbol] = value
-        return True
+        # cur_func_env = self.environment[-1]  # !!! maybe put back
+        if self.curr_env_ptr is self.environment:
+            cur_func_env = self.curr_env_ptr[-1]
+            if symbol in cur_func_env[-1]:  # symbol already defined in current scope
+                return False
+            cur_func_env[-1][symbol] = value
+            return True
+        else:
+            cur_func_env = self.curr_env_ptr[-1]
+            cur_func_env2 = self.environment[-1]
+            if (
+                symbol in cur_func_env[-1] or symbol in cur_func_env2[-1]
+            ):  # symbol already defined in current scope
+                return False
+            cur_func_env[-1][symbol] = value
+            cur_func_env2[-1][symbol] = value
+            return True
 
     # used when we enter a new function - start with empty dictionary to hold parameters.
     def push_func(self):
         # self.environment.append([{}])  # [[...]] -> [[...], [{}]] # !!! maybe put back
-        self.curr_env_ptr.append([{}])
+        if self.curr_env_ptr is self.environment:
+            self.curr_env_ptr.append([{}])
+        else:
+            self.environment.append([{}])
+            self.curr_env_ptr.append([{}])
 
     def push_block(self):
         cur_func_env = self.curr_env_ptr[-1]
         cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
+        if self.curr_env_ptr is not self.environment:
+            cur_func_env = self.environment[-1]
+            cur_func_env.append({})  # [[...],[{....}] -> [[...],[{...}, {}]]
 
     def pop_block(self):
-        # cur_func_env = self.environment[-1] # !!! maybe put back
+        # cur_func_env = self.environment[-1]  # !!! maybe put back
         cur_func_env = self.curr_env_ptr[-1]
         cur_func_env.pop()
+        if self.curr_env_ptr is not self.environment:
+            cur_func_env = self.environment[-1]
+            cur_func_env.pop()
 
     # used when we exit a nested block to discard the environment for that block
     def pop_func(self):
-        # self.environment.pop() # !!! maybe put back
+        # self.environment.pop()  # !!! maybe put back
         self.curr_env_ptr.pop()
+        if self.curr_env_ptr is not self.environment:
+            self.environment.pop()
 
     def get_printable_env(self):
         my_str = "["
@@ -72,8 +106,8 @@ class EnvironmentManager:
                 for key, val in func_scope.items():
                     # !!! if having issues turning in, make sure to remove this
                     my_str += "'" + key + "': "
-                    # my_str += get_printable_debug(val)
-                    my_str += str(val)
+                    my_str += get_printable_debug(val)
+                    # my_str += str(val)
                     if key != list(func_scope.keys())[-1]:
                         my_str += ", "
                 my_str += "}"
